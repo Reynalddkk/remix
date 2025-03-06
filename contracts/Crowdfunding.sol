@@ -7,6 +7,7 @@ contract Crowdfunding {
     uint256 public goal;
     uint256 public deadline;
     address public owner;
+    bool public paused;
 
     enum CampaignState { Active, Successful, Failed }
     CampaignState public state;
@@ -35,7 +36,18 @@ contract Crowdfunding {
         _;
     }
 
+    modifier notPaused() {
+        require(!paused, "Contract is paused.");
+        _;
+    }
+    
+    modifier pausedOnly() {
+        require(paused == true, "Contract is not paused.");
+        _;
+    }
+
     constructor(
+        address _owner,
         string memory _name,
         string memory _description,
         uint256 _goal,
@@ -45,7 +57,7 @@ contract Crowdfunding {
         description = _description;
         goal = _goal;
         deadline = block.timestamp + (_durationInDays * 1 days);
-        owner = msg.sender;
+        owner = _owner;
         state = CampaignState.Active;
     }
     function CheckAndUpdateCampaignState() internal {
@@ -59,7 +71,7 @@ contract Crowdfunding {
         
     }
 
-    function fund (uint256 _tierIndex) public payable campaignOpen  {
+    function fund (uint256 _tierIndex) public payable campaignOpen notPaused  {
         require(_tierIndex < tiers.length, "Tier tidak valid");
         require(msg.value == tiers[_tierIndex].amount, "Nominal tidak tepat");
 
@@ -100,7 +112,7 @@ contract Crowdfunding {
 
     function refund() public {
         CheckAndUpdateCampaignState();
-       // require(state == CampaignState.Failed, "Refunds Tidak tersedia");
+       require(state == CampaignState.Failed, "Refunds Tidak tersedia");
         uint256 amount = backers[msg.sender].totalContribution;
         require(amount > 0, "Tidak ada kontribusi untuk di refund");
 
@@ -110,5 +122,24 @@ contract Crowdfunding {
     function hasFundedTier(address _backer, uint256 _tierIndex) public view returns (bool) {
         return backers[_backer].fundedTiers[_tierIndex];
 
+    }
+
+    function getTiers() public view returns (Tier[] memory){
+    return tiers;
+    }
+
+    function tooglePause() public onlyOwner {
+        paused = !paused;
+    }
+
+    function getCampaignStatus() public view returns (CampaignState) {
+        if (state == CampaignState.Active && block.timestamp > deadline) {
+            return address(this).balance >= goal ? CampaignState.Successful : CampaignState.Failed;
+        }
+        return state;
+    }
+
+    function extendDeadline(uint256 _daysToAdd) public onlyOwner campaignOpen {
+        deadline += _daysToAdd * 1 days;
     }
 }
